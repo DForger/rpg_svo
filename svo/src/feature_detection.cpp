@@ -69,10 +69,12 @@ void FastDetector::detect(
     const double detection_threshold,
     Features& fts)
 {
+  // used to store corner for each cell
   Corners corners(grid_n_cols_*grid_n_rows_, Corner(0,0,detection_threshold,0,0.0f));
   for(int L=0; L<n_pyr_levels_; ++L)
   {
     const int scale = (1<<L);
+    // container for detected fast corner
     vector<fast::fast_xy> fast_corners;
 #if __SSE2__
       fast::fast_corner_detect_10_sse2(
@@ -88,17 +90,22 @@ void FastDetector::detect(
           img_pyr[L].rows, img_pyr[L].cols, 20, fast_corners);
 #endif
     vector<int> scores, nm_corners;
+    // compute fast score
     fast::fast_corner_score_10((fast::fast_byte*) img_pyr[L].data, img_pyr[L].cols, fast_corners, 20, scores);
+    // nonmax suppression by fast score
     fast::fast_nonmax_3x3(fast_corners, scores, nm_corners);
 
     for(auto it=nm_corners.begin(), ite=nm_corners.end(); it!=ite; ++it)
     {
       fast::fast_xy& xy = fast_corners.at(*it);
+      // compute cell idx
       const int k = static_cast<int>((xy.y*scale)/cell_size_)*grid_n_cols_
                   + static_cast<int>((xy.x*scale)/cell_size_);
+      // an occupied cell means it has a tracked feature in it, this grid is preprocessed before detection
       if(grid_occupancy_[k])
         continue;
       const float score = vk::shiTomasiScore(img_pyr[L], xy.x, xy.y);
+      // only keep the corner with highest score
       if(score > corners.at(k).score)
         corners.at(k) = Corner(xy.x*scale, xy.y*scale, score, L, 0.0f);
     }

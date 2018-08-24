@@ -84,7 +84,7 @@ void Reprojector::reprojectMap(
       it_frame!=ite_frame && n<options_.max_n_kfs; ++it_frame, ++n)
   {
     FramePtr ref_frame = it_frame->first;
-    overlap_kfs.push_back(pair<FramePtr,size_t>(ref_frame,0));
+    overlap_kfs.push_back(pair<FramePtr,size_t>(ref_frame,0)); // init with 0 shared points
 
     // Try to reproject each mappoint that the other KF observes
     for(auto it_ftr=ref_frame->fts_.begin(), ite_ftr=ref_frame->fts_.end();
@@ -113,6 +113,7 @@ void Reprojector::reprojectMap(
     {
       if(!reprojectPoint(frame, it->first))
       {
+        // if a point failed to reproject mulitple times on recent images, remove
         it->first->n_failed_reproj_ += 3;
         if(it->first->n_failed_reproj_ > 30)
         {
@@ -205,9 +206,11 @@ bool Reprojector::reprojectCell(Cell& cell, FramePtr frame)
 
 bool Reprojector::reprojectPoint(FramePtr frame, Point* point)
 {
+  // project to camera plane
   Vector2d px(frame->w2c(point->pos_));
   if(frame->cam_->isInFrame(px.cast<int>(), 8)) // 8px is the patch size in the matcher
   {
+    // cell idx
     const int k = static_cast<int>(px[1]/grid_.cell_size)*grid_.grid_n_cols
                 + static_cast<int>(px[0]/grid_.cell_size);
     grid_.cells.at(k)->push_back(Candidate(point, px));

@@ -66,6 +66,7 @@ void FrameHandlerMono::addImage(const cv::Mat& img, const double timestamp)
 
   // create new frame
   SVO_START_TIMER("pyramid_creation");
+  // build image pyr, clear local kpt buf
   new_frame_.reset(new Frame(cam_, img.clone(), timestamp));
   SVO_STOP_TIMER("pyramid_creation");
 
@@ -102,6 +103,7 @@ FrameHandlerMono::UpdateResult FrameHandlerMono::processFirstFrame()
 
 FrameHandlerBase::UpdateResult FrameHandlerMono::processSecondFrame()
 {
+  // for first two frame, using homography to initialize
   initialization::InitResult res = klt_homography_init_.addSecondFrame(new_frame_);
   if(res == initialization::FAILURE)
     return RESULT_FAILURE;
@@ -131,7 +133,7 @@ FrameHandlerBase::UpdateResult FrameHandlerMono::processFrame()
   // Set initial pose TODO use prior
   new_frame_->T_f_w_ = last_frame_->T_f_w_;
 
-  // sparse image align
+  // 1. sparse image align
   SVO_START_TIMER("sparse_img_align");
   SparseImgAlign img_align(Config::kltMaxLevel(), Config::kltMinLevel(),
                            30, SparseImgAlign::GaussNewton, false, false);
@@ -140,7 +142,7 @@ FrameHandlerBase::UpdateResult FrameHandlerMono::processFrame()
   SVO_LOG(img_align_n_tracked);
   SVO_DEBUG_STREAM("Img Align:\t Tracked = " << img_align_n_tracked);
 
-  // map reprojection & feature alignment
+  // 2. map reprojection & feature alignment
   SVO_START_TIMER("reproject");
   reprojector_.reprojectMap(new_frame_, overlap_kfs_);
   SVO_STOP_TIMER("reproject");
@@ -150,13 +152,14 @@ FrameHandlerBase::UpdateResult FrameHandlerMono::processFrame()
   SVO_DEBUG_STREAM("Reprojection:\t nPoints = "<<repr_n_mps<<"\t \t nMatches = "<<repr_n_new_references);
   if(repr_n_new_references < Config::qualityMinFts())
   {
+    // tracking failure, reset system
     SVO_WARN_STREAM_THROTTLE(1.0, "Not enough matched features.");
     new_frame_->T_f_w_ = last_frame_->T_f_w_; // reset to avoid crazy pose jumps
     tracking_quality_ = TRACKING_INSUFFICIENT;
     return RESULT_FAILURE;
   }
 
-  // pose optimization
+  // 3. pose optimization
   SVO_START_TIMER("pose_optimizer");
   size_t sfba_n_edges_final;
   double sfba_thresh, sfba_error_init, sfba_error_final;
@@ -170,13 +173,14 @@ FrameHandlerBase::UpdateResult FrameHandlerMono::processFrame()
   if(sfba_n_edges_final < 20)
     return RESULT_FAILURE;
 
-  // structure optimization
+  // 4. structure optimization, optimize map point
   SVO_START_TIMER("point_optimizer");
   optimizeStructure(new_frame_, Config::structureOptimMaxPts(), Config::structureOptimNumIter());
   SVO_STOP_TIMER("point_optimizer");
 
-  // select keyframe
+  // 5. select keyframe
   core_kfs_.insert(new_frame_);
+  // tracking quality is dependent on how many map point we have tracked on current frame
   setTrackingQuality(sfba_n_edges_final);
   if(tracking_quality_ == TRACKING_INSUFFICIENT)
   {
@@ -187,9 +191,11 @@ FrameHandlerBase::UpdateResult FrameHandlerMono::processFrame()
   frame_utils::getSceneDepth(*new_frame_, depth_mean, depth_min);
   if(!needNewKf(depth_mean) || tracking_quality_ == TRACKING_BAD)
   {
+    // update keyframe's depth filter
     depth_filter_->addFrame(new_frame_);
     return RESULT_NO_KEYFRAME;
   }
+  // need add a new keyframe
   new_frame_->setKeyframe();
   SVO_DEBUG_STREAM("New keyframe selected.");
 

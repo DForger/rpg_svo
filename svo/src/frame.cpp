@@ -140,9 +140,11 @@ void Frame::removeKeyPoint(Feature* ftr)
 
 bool Frame::isVisible(const Vector3d& xyz_w) const
 {
+  // transform to frame coord
   Vector3d xyz_f = T_f_w_*xyz_w;
   if(xyz_f.z() < 0.0)
     return false; // point is behind the camera
+  // project to image plane
   Vector2d px = f2c(xyz_f);
   if(px[0] >= 0.0 && px[1] >= 0.0 && px[0] < cam_->width() && px[1] < cam_->height())
     return true;
