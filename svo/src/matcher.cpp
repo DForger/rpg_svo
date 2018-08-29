@@ -50,8 +50,8 @@ void getWarpMatrixAffine(
   const Vector2d px_cur(cam_cur.world2cam(T_cur_ref*(xyz_ref)));
   const Vector2d px_du(cam_cur.world2cam(T_cur_ref*(xyz_du_ref)));
   const Vector2d px_dv(cam_cur.world2cam(T_cur_ref*(xyz_dv_ref)));
-  A_cur_ref.col(0) = (px_du - px_cur)/halfpatch_size;
-  A_cur_ref.col(1) = (px_dv - px_cur)/halfpatch_size;
+  A_cur_ref.col(0) = (px_du - px_cur)/halfpatch_size; // new x basis
+  A_cur_ref.col(1) = (px_dv - px_cur)/halfpatch_size; // new y basis
 }
 
 int getBestSearchLevel(
@@ -60,8 +60,11 @@ int getBestSearchLevel(
 {
   // Compute patch level in other image
   int search_level = 0;
-  double D = A_cur_ref.determinant();
-  while(D > 3.0 && search_level < max_level)
+  double D = A_cur_ref.determinant(); // det([a b; c d]) = ad - bc
+  // if D >= 4, ref level is higher than cur level(ref is smaller)
+  // if D ≈ 1,  ref level is the same as cur level
+  // if D <= 0.25, ref level is lower than cur level(ref is bigger)
+  while(D > 3.0 && search_level < max_level) // we want ref size is bigger than cur size??
   {
     search_level += 1;
     D *= 0.25;
@@ -78,6 +81,7 @@ void warpAffine(
     const int halfpatch_size,
     uint8_t* patch)
 {
+  // the patch is created in cur frame
   const int patch_size = halfpatch_size*2 ;
   const Matrix2f A_ref_cur = A_cur_ref.inverse().cast<float>();
   if(isnan(A_ref_cur(0,0)))
@@ -95,6 +99,7 @@ void warpAffine(
     {
       Vector2f px_patch(x-halfpatch_size, y-halfpatch_size);
       px_patch *= (1<<search_level);
+      // find corresponding pos in reference frame
       const Vector2f px(A_ref_cur*px_patch + px_ref_pyr);
       if (px[0]<0 || px[1]<0 || px[0]>=img_ref.cols-1 || px[1]>=img_ref.rows-1)
         *patch_ptr = 0;
@@ -152,6 +157,7 @@ bool Matcher::findMatchDirect(
   search_level_ = warp::getBestSearchLevel(A_cur_ref_, Config::nPyrLevels()-1);
   warp::warpAffine(A_cur_ref_, ref_ftr_->frame->img_pyr_[ref_ftr_->level], ref_ftr_->px,
                    ref_ftr_->level, search_level_, halfpatch_size_+1, patch_with_border_);
+  // XXX: what's following function doing?
   createPatchFromPatchWithBorder();
 
   // px_cur should be set
@@ -211,6 +217,7 @@ bool Matcher::findEpipolarMatchDirect(
     }
   }
 
+  // the optimal search level on cur frame is the same or higher than ref frame
   search_level_ = warp::getBestSearchLevel(A_cur_ref_, Config::nPyrLevels()-1);
 
   // Find length of search range on epipolar line
@@ -221,6 +228,7 @@ bool Matcher::findEpipolarMatchDirect(
   // Warp reference patch at ref_level
   warp::warpAffine(A_cur_ref_, ref_frame.img_pyr_[ref_ftr.level], ref_ftr.px,
                    ref_ftr.level, search_level_, halfpatch_size_+1, patch_with_border_);
+  // XXX: what's following code doing?
   createPatchFromPatchWithBorder();
 
   if(epi_length_ < 2.0)

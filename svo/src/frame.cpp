@@ -61,6 +61,7 @@ void Frame::initFrame(const cv::Mat& img)
 void Frame::setKeyframe()
 {
   is_keyframe_ = true;
+  // set keypoint is selecting 5 points to represent the fov of current frame
   setKeyPoints();
 }
 

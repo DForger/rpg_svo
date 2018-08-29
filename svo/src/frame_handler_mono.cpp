@@ -178,7 +178,7 @@ FrameHandlerBase::UpdateResult FrameHandlerMono::processFrame()
   optimizeStructure(new_frame_, Config::structureOptimMaxPts(), Config::structureOptimNumIter());
   SVO_STOP_TIMER("point_optimizer");
 
-  // 5. select keyframe
+  // 5. keyframe selection
   core_kfs_.insert(new_frame_);
   // tracking quality is dependent on how many map point we have tracked on current frame
   setTrackingQuality(sfba_n_edges_final);
@@ -191,21 +191,21 @@ FrameHandlerBase::UpdateResult FrameHandlerMono::processFrame()
   frame_utils::getSceneDepth(*new_frame_, depth_mean, depth_min);
   if(!needNewKf(depth_mean) || tracking_quality_ == TRACKING_BAD)
   {
-    // update keyframe's depth filter
+    // no need for new keyframe, cur_frame is used to update depth filter
     depth_filter_->addFrame(new_frame_);
     return RESULT_NO_KEYFRAME;
   }
-  // need add a new keyframe
+  // selected as a new keyframe
   new_frame_->setKeyframe();
   SVO_DEBUG_STREAM("New keyframe selected.");
 
-  // new keyframe selected
+  // add reference to map point, 
   for(Features::iterator it=new_frame_->fts_.begin(); it!=new_frame_->fts_.end(); ++it)
     if((*it)->point != NULL)
       (*it)->point->addFrameRef(*it);
   map_.point_candidates_.addCandidatePointToFrame(new_frame_);
 
-  // optional bundle adjustment
+  // optional bundle adjustment after inerting new keyframe
 #ifdef USE_BUNDLE_ADJUSTMENT
   if(Config::lobaNumIter() > 0)
   {
